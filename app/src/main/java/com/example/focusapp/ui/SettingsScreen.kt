@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import com.example.focusapp.SettingsRepository
 fun SettingsScreen(
     settingsRepository: SettingsRepository,
     onNavigateToPolicies: () -> Unit,
+    onNavigateToLog: () -> Unit,
     onBack: () -> Unit
 ) {
     var logPath by remember { mutableStateOf(settingsRepository.getLogFilePath()) }
@@ -85,6 +87,16 @@ fun SettingsScreen(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
+            
+            Divider()
+            
+            // View Log Button
+            SettingsItem(
+                title = "View Bypass Log",
+                subtitle = "See your bypass history",
+                icon = { Icon(Icons.Default.Search, contentDescription = null) },
+                onClick = onNavigateToLog
+            )
         }
     }
 }

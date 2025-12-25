@@ -23,6 +23,7 @@ import androidx.core.graphics.drawable.toBitmap
 import com.example.focusapp.ui.PolicyEditorScreen
 import com.example.focusapp.ui.PolicyListScreen
 import com.example.focusapp.ui.SettingsScreen
+import com.example.focusapp.ui.LogViewerScreen
 
 data class AppInfo(
     val name: String,
@@ -35,6 +36,7 @@ sealed class Screen {
     object AppList : Screen()
     object Settings : Screen()
     object PolicyList : Screen()
+    object LogViewer : Screen()
     data class PolicyEditor(val policy: BlockingPolicy?) : Screen()
     data class PolicyAssignment(val app: AppInfo) : Screen()
 }
@@ -66,7 +68,14 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             settingsRepository = settingsRepository,
                             onNavigateToPolicies = { currentScreen = Screen.PolicyList },
+                            onNavigateToLog = { currentScreen = Screen.LogViewer },
                             onBack = { currentScreen = Screen.AppList }
+                        )
+                    }
+                    is Screen.LogViewer -> {
+                        LogViewerScreen(
+                            logFilePath = settingsRepository.getLogFilePath(),
+                            onBack = { currentScreen = Screen.Settings }
                         )
                     }
                     is Screen.PolicyList -> {
