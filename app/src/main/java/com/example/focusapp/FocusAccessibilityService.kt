@@ -29,6 +29,9 @@ class FocusAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // Always check for PiP windows regardless of event type
+        checkAndBlockPip()
+
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val packageName = event.packageName?.toString() ?: return
             
@@ -42,6 +45,32 @@ class FocusAccessibilityService : AccessibilityService() {
             }
             
             checkAndEnforceBlocking(packageName)
+        }
+    }
+
+    private fun checkAndBlockPip() {
+        val windows = windows
+        for (window in windows) {
+            if (window.isInPictureInPictureMode) {
+                // Try to get package name from the window root
+                val pkg = window.root?.packageName?.toString() ?: continue
+                
+                if (policyRepository.isAppCurrentlyBlocked(pkg) && !bypassManager.isAppBypassed(pkg)) {
+                    Log.d(TAG, "Detected blocked PiP window for $pkg. Clearing...")
+                    // Sending HOME again usually dismisses PiP if it's already on the home screen
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    
+                    // Also trigger the activity prompt if not already showing
+                    val appName = try {
+                        packageManager.getApplicationLabel(
+                            packageManager.getApplicationInfo(pkg, 0)
+                        ).toString()
+                    } catch (e: Exception) { pkg }
+                    
+                    startActivity(BypassActivity.createIntent(this, pkg, appName))
+                    break
+                }
+            }
         }
     }
 
@@ -90,10 +119,22 @@ class FocusAccessibilityService : AccessibilityService() {
         
         val checkRunnable = Runnable {
             scheduledExpiries.remove(packageName)
-            // Only enforce if the app is still in the foreground
-            if (currentForegroundPackage == packageName) {
-                Log.d(TAG, "Bypass expired for $packageName while in foreground. kicking home.")
-                performGlobalAction(GLOBAL_ACTION_HOME)
+            // Re-check block status
+            if (policyRepository.isAppCurrentlyBlocked(packageName) && !bypassManager.isAppBypassed(packageName)) {
+                if (currentForegroundPackage == packageName) {
+                    Log.d(TAG, "Bypass expired for $packageName while in foreground. kicking home.")
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    
+                    val appName = try {
+                        packageManager.getApplicationLabel(
+                            packageManager.getApplicationInfo(packageName, 0)
+                        ).toString()
+                    } catch (e: Exception) { packageName }
+                    
+                    handler.postDelayed({
+                        startActivity(BypassActivity.createIntent(this, packageName, appName))
+                    }, 100)
+                }
             }
         }
         
