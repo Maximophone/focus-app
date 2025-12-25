@@ -1,0 +1,33 @@
+# Android build artifacts
+*.iml
+.gradle/
+build/
+local.properties
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# APK files
+*.apk
+*.ap_
+*.aab
+
+# Generated files
+*.dex
+*.class
+
+# Logs
+*.log
+
+# Signing
+*.jks
+*.keystore
+
+# Local configuration
+secrets.properties

@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Focus App</string>
+    <string name="accessibility_service_description">Used to monitor foreground apps and block restricted ones to help you stay productive.</string>
+</resources>
