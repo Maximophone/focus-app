@@ -61,22 +61,23 @@ class BypassManager(private val context: Context) {
     /**
      * Create a bypass for an app and log it.
      */
-    fun createBypass(packageName: String, appName: String, durationMinutes: Int, reason: String) {
-        val expiryTime = LocalDateTime.now().plusMinutes(durationMinutes.toLong())
+    fun createBypass(packageName: String, appName: String, durationSeconds: Int, reason: String) {
+        val expiryTime = LocalDateTime.now().plusSeconds(durationSeconds.toLong())
         prefs.edit().putString(packageName, expiryTime.toString()).apply()
         
-        logToMarkdown(appName, packageName, durationMinutes, reason)
+        logToMarkdown(appName, packageName, durationSeconds, reason)
     }
 
-    private fun logToMarkdown(appName: String, packageName: String, duration: Int, reason: String) {
+    private fun logToMarkdown(appName: String, packageName: String, durationSec: Int, reason: String) {
         val logFile = File(settingsRepository.getLogFilePath())
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         
         val header = if (!logFile.exists()) {
             "| Date | App | Package | Duration | Reason |\n|------|-----|---------|----------|--------|\n"
         } else ""
 
-        val entry = "| $timestamp | $appName | $packageName | $duration min | $reason |\n"
+        val durationStr = if (durationSec >= 60) "${durationSec / 60} min" else "$durationSec sec"
+        val entry = "| $timestamp | $appName | $packageName | $durationStr | $reason |\n"
         
         try {
             FileOutputStream(logFile, true).use { 

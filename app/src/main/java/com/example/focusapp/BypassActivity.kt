@@ -83,9 +83,9 @@ fun BypassScreen(
     onConfirm: (Int, String) -> Unit
 ) {
     var reason by remember { mutableStateOf("") }
-    var selectedDuration by remember { mutableIntStateOf(15) }
+    var selectedDurationSeconds by remember { mutableIntStateOf(15 * 60) }
     
-    val durations = listOf(5, 15, 30, 60)
+    val durationOptions = listOf(30, 5 * 60, 15 * 60, 30 * 60, 60 * 60)
     
     Column(
         modifier = Modifier
@@ -130,7 +130,7 @@ fun BypassScreen(
         Spacer(modifier = Modifier.height(24.dp))
         
         Text(
-            text = "For how long? (minutes)",
+            text = "For how long?",
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.align(Alignment.Start)
         )
@@ -139,11 +139,12 @@ fun BypassScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            durations.forEach { duration ->
+            durationOptions.forEach { seconds ->
+                val label = if (seconds < 60) "${seconds}s" else "${seconds / 60}m"
                 FilterChip(
-                    selected = selectedDuration == duration,
-                    onClick = { selectedDuration = duration },
-                    label = { Text("$duration") }
+                    selected = selectedDurationSeconds == seconds,
+                    onClick = { selectedDurationSeconds = seconds },
+                    label = { Text(label) }
                 )
             }
         }
@@ -151,7 +152,7 @@ fun BypassScreen(
         Spacer(modifier = Modifier.height(48.dp))
         
         Button(
-            onClick = { onConfirm(selectedDuration, reason) },
+            onClick = { onConfirm(selectedDurationSeconds, reason) },
             modifier = Modifier.fillMaxWidth(),
             enabled = reason.isNotBlank(),
             shape = MaterialTheme.shapes.medium
