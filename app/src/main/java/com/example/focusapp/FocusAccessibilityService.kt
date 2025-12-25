@@ -1,13 +1,12 @@
 package com.example.focusapp
 
 import android.accessibilityservice.AccessibilityService
-import android.content.Intent
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 
 class FocusAccessibilityService : AccessibilityService() {
     
-    private lateinit var blockedAppsRepository: BlockedAppsRepository
+    private lateinit var policyRepository: PolicyRepository
     
     // Keep track of the last blocked app to avoid repeated blocking
     private var lastBlockedPackage: String? = null
@@ -15,7 +14,7 @@ class FocusAccessibilityService : AccessibilityService() {
     
     override fun onServiceConnected() {
         super.onServiceConnected()
-        blockedAppsRepository = BlockedAppsRepository(this)
+        policyRepository = PolicyRepository(this)
         Log.d(TAG, "Focus Accessibility Service connected")
     }
 
@@ -31,8 +30,8 @@ class FocusAccessibilityService : AccessibilityService() {
                 return
             }
             
-            // Check if app is blocked
-            if (blockedAppsRepository.isAppBlocked(packageName)) {
+            // Check if app is blocked based on active policies
+            if (policyRepository.isAppCurrentlyBlocked(packageName)) {
                 val now = System.currentTimeMillis()
                 
                 // Debounce: Don't block the same app more than once per second
