@@ -70,18 +70,24 @@ class BypassManager(private val context: Context) {
 
     private fun logToMarkdown(appName: String, packageName: String, durationSec: Int, reason: String) {
         val logFile = File(settingsRepository.getLogFilePath())
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
         
-        val header = if (!logFile.exists()) {
-            "| Date | App | Package | Duration | Reason |\n|------|-----|---------|----------|--------|\n"
-        } else ""
-
         val durationStr = if (durationSec >= 60) "${durationSec / 60} min" else "$durationSec sec"
-        val entry = "| $timestamp | $appName | $packageName | $durationStr | $reason |\n"
+        
+        // Journal-style entry
+        val entry = buildString {
+            appendLine("## $timestamp — $appName")
+            appendLine()
+            appendLine("**Duration:** $durationStr")
+            appendLine()
+            appendLine(reason.trim())
+            appendLine()
+            appendLine("---")
+            appendLine()
+        }
         
         try {
             FileOutputStream(logFile, true).use { 
-                if (header.isNotEmpty()) it.write(header.toByteArray())
                 it.write(entry.toByteArray()) 
             }
         } catch (e: Exception) {
