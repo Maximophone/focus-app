@@ -19,6 +19,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".BypassActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusApp" />
+
         <service
             android:name=".FocusAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"

@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.example.focusapp.ui.PolicyEditorScreen
 import com.example.focusapp.ui.PolicyListScreen
+import com.example.focusapp.ui.SettingsScreen
 
 data class AppInfo(
     val name: String,
@@ -32,6 +33,7 @@ data class AppInfo(
 // Navigation states
 sealed class Screen {
     object AppList : Screen()
+    object Settings : Screen()
     object PolicyList : Screen()
     data class PolicyEditor(val policy: BlockingPolicy?) : Screen()
     data class PolicyAssignment(val app: AppInfo) : Screen()
@@ -40,11 +42,13 @@ sealed class Screen {
 class MainActivity : ComponentActivity() {
     
     private lateinit var policyRepository: PolicyRepository
+    private lateinit var settingsRepository: SettingsRepository
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         policyRepository = PolicyRepository(this)
+        settingsRepository = SettingsRepository(this)
         
         setContent {
             MaterialTheme {
@@ -54,15 +58,22 @@ class MainActivity : ComponentActivity() {
                     is Screen.AppList -> {
                         AppListScreen(
                             policyRepository = policyRepository,
-                            onNavigateToPolicies = { currentScreen = Screen.PolicyList },
+                            onNavigateToSettings = { currentScreen = Screen.Settings },
                             onAssignPolicies = { app -> currentScreen = Screen.PolicyAssignment(app) }
+                        )
+                    }
+                    is Screen.Settings -> {
+                        SettingsScreen(
+                            settingsRepository = settingsRepository,
+                            onNavigateToPolicies = { currentScreen = Screen.PolicyList },
+                            onBack = { currentScreen = Screen.AppList }
                         )
                     }
                     is Screen.PolicyList -> {
                         PolicyListScreen(
                             policyRepository = policyRepository,
                             onEditPolicy = { policy -> currentScreen = Screen.PolicyEditor(policy) },
-                            onBack = { currentScreen = Screen.AppList }
+                            onBack = { currentScreen = Screen.Settings }
                         )
                     }
                     is Screen.PolicyEditor -> {
@@ -90,7 +101,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppListScreen(
     policyRepository: PolicyRepository,
-    onNavigateToPolicies: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     onAssignPolicies: (AppInfo) -> Unit
 ) {
     val context = LocalContext.current
@@ -117,6 +128,7 @@ fun AppListScreen(
     }
     
     // Track assignments (trigger recomposition when assignments change)
+    // We use the repository directly in partitioning
     val assignments by remember { mutableStateOf(policyRepository.getAppPolicyAssignments()) }
     
     val partitionedApps = remember(installedApps, assignments) {
@@ -132,8 +144,8 @@ fun AppListScreen(
             TopAppBar(
                 title = { Text("Focus App") },
                 actions = {
-                    IconButton(onClick = onNavigateToPolicies) {
-                        Icon(Icons.Default.Settings, contentDescription = "Policies")
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
