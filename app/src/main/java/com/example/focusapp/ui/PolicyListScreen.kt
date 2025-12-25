@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,7 +20,8 @@ import com.example.focusapp.PolicyRepository
 @Composable
 fun PolicyListScreen(
     policyRepository: PolicyRepository,
-    onEditPolicy: (BlockingPolicy?) -> Unit // null = create new
+    onEditPolicy: (BlockingPolicy?) -> Unit, // null = create new
+    onBack: () -> Unit
 ) {
     var policies by remember { mutableStateOf(policyRepository.getAllPolicies()) }
     var showDeleteDialog by remember { mutableStateOf<BlockingPolicy?>(null) }
@@ -28,6 +30,11 @@ fun PolicyListScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Blocking Policies") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )

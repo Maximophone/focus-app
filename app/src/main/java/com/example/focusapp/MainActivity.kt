@@ -61,7 +61,8 @@ class MainActivity : ComponentActivity() {
                     is Screen.PolicyList -> {
                         PolicyListScreen(
                             policyRepository = policyRepository,
-                            onEditPolicy = { policy -> currentScreen = Screen.PolicyEditor(policy) }
+                            onEditPolicy = { policy -> currentScreen = Screen.PolicyEditor(policy) },
+                            onBack = { currentScreen = Screen.AppList }
                         )
                     }
                     is Screen.PolicyEditor -> {
@@ -115,9 +116,17 @@ fun AppListScreen(
             .sortedBy { it.name.lowercase() }
     }
     
-    // Track assignments
-    var assignments by remember { mutableStateOf(policyRepository.getAppPolicyAssignments()) }
+    // Track assignments (trigger recomposition when assignments change)
+    val assignments by remember { mutableStateOf(policyRepository.getAppPolicyAssignments()) }
     
+    val partitionedApps = remember(installedApps, assignments) {
+        installedApps.partition { app ->
+            policyRepository.getPoliciesForApp(app.packageName).isNotEmpty()
+        }
+    }
+    val restrictedApps = partitionedApps.first
+    val otherApps = partitionedApps.second
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -153,16 +162,45 @@ fun AppListScreen(
             
             // List of apps
             LazyColumn {
-                items(installedApps) { app ->
-                    val appPolicies = policyRepository.getPoliciesForApp(app.packageName)
-                    val isCurrentlyBlocked = appPolicies.any { it.isActiveNow() }
-                    
-                    AppListItem(
-                        app = app,
-                        assignedPolicies = appPolicies,
-                        isCurrentlyBlocked = isCurrentlyBlocked,
-                        onClick = { onAssignPolicies(app) }
-                    )
+                if (restrictedApps.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Restricted",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp)
+                        )
+                    }
+                    items(restrictedApps) { app ->
+                        val appPolicies = policyRepository.getPoliciesForApp(app.packageName)
+                        val isCurrentlyBlocked = appPolicies.any { it.isActiveNow() }
+                        
+                        AppListItem(
+                            app = app,
+                            assignedPolicies = appPolicies,
+                            isCurrentlyBlocked = isCurrentlyBlocked,
+                            onClick = { onAssignPolicies(app) }
+                        )
+                    }
+                }
+
+                if (otherApps.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Others",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp)
+                        )
+                    }
+                    items(otherApps) { app ->
+                        AppListItem(
+                            app = app,
+                            assignedPolicies = emptyList(),
+                            isCurrentlyBlocked = false,
+                            onClick = { onAssignPolicies(app) }
+                        )
+                    }
                 }
             }
         }
