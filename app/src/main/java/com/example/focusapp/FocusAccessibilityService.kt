@@ -35,10 +35,10 @@ class FocusAccessibilityService : AccessibilityService() {
         if (eventPackage == this.packageName) return
         
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            currentForegroundPackage = eventPackage
+            Log.d(TAG, "Foreground: $currentForegroundPackage")
+            
             if (!isExcludedPackage(eventPackage)) {
-                currentForegroundPackage = eventPackage
-                Log.d(TAG, "Foreground: $currentForegroundPackage")
-                
                 // Check if this app needs blocking
                 handleAppLaunch(eventPackage)
             }
