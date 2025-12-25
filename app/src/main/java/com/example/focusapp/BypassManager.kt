@@ -44,6 +44,21 @@ class BypassManager(private val context: Context) {
     }
 
     /**
+     * Get remaining time for a bypass in milliseconds.
+     */
+    fun getRemainingMillis(packageName: String): Long {
+        val expiryTimeStr = prefs.getString(packageName, null) ?: return 0
+        return try {
+            val expiryTime = LocalDateTime.parse(expiryTimeStr)
+            val now = LocalDateTime.now()
+            val duration = java.time.Duration.between(now, expiryTime)
+            duration.toMillis().coerceAtLeast(0)
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    /**
      * Create a bypass for an app and log it.
      */
     fun createBypass(packageName: String, appName: String, durationMinutes: Int, reason: String) {

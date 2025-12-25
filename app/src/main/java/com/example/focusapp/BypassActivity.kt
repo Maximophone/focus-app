@@ -34,9 +34,23 @@ class BypassActivity : ComponentActivity() {
                 ) {
                     BypassScreen(
                         appName = appName,
-                        onCancel = { finish() },
+                        onCancel = { 
+                            // Go back to Home
+                            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_HOME)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            startActivity(homeIntent)
+                            finish() 
+                        },
                         onConfirm = { duration, reason ->
                             bypassManager.createBypass(packageName, appName, duration, reason)
+                            
+                            // Launch the target app
+                            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                            if (launchIntent != null) {
+                                startActivity(launchIntent)
+                            }
                             finish()
                         }
                     )

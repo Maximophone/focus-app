@@ -2,6 +2,8 @@ package com.example.focusapp
 
 import android.accessibilityservice.AccessibilityService
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 
@@ -12,6 +14,12 @@ class FocusAccessibilityService : AccessibilityService() {
     
     private var lastBlockedPackage: String? = null
     private var lastBlockedTime: Long = 0
+    
+    private var currentForegroundPackage: String? = null
+    private val handler = Handler(Looper.getMainLooper())
+    
+    // To keep track of scheduled expiry checks
+    private val scheduledExpiries = mutableMapOf<String, Runnable>()
     
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -24,57 +32,86 @@ class FocusAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val packageName = event.packageName?.toString() ?: return
             
+            // Log for debugging
+            Log.d(TAG, "Window state changed: $packageName")
+            currentForegroundPackage = packageName
+            
             // Ignore our own app and system UI
-            if (packageName == this.packageName || 
-                packageName == "com.android.systemui" ||
-                packageName == "com.google.android.apps.nexuslauncher" ||
-                packageName == "com.android.launcher3" ||
-                packageName == "com.google.android.inputmethod.latin") { // Keyboards
+            if (isExcludedPackage(packageName)) {
                 return
             }
             
-            // 1. Check if app is blocked by policy
-            if (policyRepository.isAppCurrentlyBlocked(packageName)) {
-                
-                // 2. Check if user has an active bypass
-                if (bypassManager.isAppBypassed(packageName)) {
-                    Log.d(TAG, "App $packageName is currently bypassed")
-                    return
-                }
+            checkAndEnforceBlocking(packageName)
+        }
+    }
 
-                val now = System.currentTimeMillis()
-                // Debounce to prevent rapid activity launching
-                if (packageName == lastBlockedPackage && now - lastBlockedTime < 2000) {
-                    return
-                }
-                
-                Log.d(TAG, "Blocking app: $packageName")
-                lastBlockedPackage = packageName
-                lastBlockedTime = now
-                
-                // 3. Go home FIRST to clear the blocked app
+    private fun checkAndEnforceBlocking(packageName: String) {
+        if (policyRepository.isAppCurrentlyBlocked(packageName)) {
+            
+            if (bypassManager.isAppBypassed(packageName)) {
+                Log.d(TAG, "App $packageName is currently bypassed")
+                scheduleExpiryCheck(packageName)
+                return
+            }
+
+            val now = System.currentTimeMillis()
+            if (packageName == lastBlockedPackage && now - lastBlockedTime < 2000) {
+                return
+            }
+            
+            Log.d(TAG, "Blocking app: $packageName")
+            lastBlockedPackage = packageName
+            lastBlockedTime = now
+            
+            val appName = try {
+                packageManager.getApplicationLabel(
+                    packageManager.getApplicationInfo(packageName, 0)
+                ).toString()
+            } catch (e: PackageManager.NameNotFoundException) {
+                packageName
+            }
+            
+            // Go home first, then launch prompt
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            handler.postDelayed({
+                startActivity(BypassActivity.createIntent(this, packageName, appName))
+            }, 100)
+        }
+    }
+
+    private fun scheduleExpiryCheck(packageName: String) {
+        // Only schedule if not already scheduled for this package
+        if (scheduledExpiries.containsKey(packageName)) return
+        
+        val remainingMillis = bypassManager.getRemainingMillis(packageName)
+        if (remainingMillis <= 0) return
+
+        Log.d(TAG, "Scheduling expiry check for $packageName in ${remainingMillis / 1000}s")
+        
+        val checkRunnable = Runnable {
+            scheduledExpiries.remove(packageName)
+            // Only enforce if the app is still in the foreground
+            if (currentForegroundPackage == packageName) {
+                Log.d(TAG, "Bypass expired for $packageName while in foreground. kicking home.")
                 performGlobalAction(GLOBAL_ACTION_HOME)
-                
-                // 4. Get readable app name for the prompt
-                val appName = try {
-                    packageManager.getApplicationLabel(
-                        packageManager.getApplicationInfo(packageName, 0)
-                    ).toString()
-                } catch (e: PackageManager.NameNotFoundException) {
-                    packageName
-                }
-                
-                // 5. Launch Bypass Activity AFTER a tiny delay to ensure Home has settled
-                // Using a handler or a simple thread to ensure the activity lands on top of Home
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    startActivity(BypassActivity.createIntent(this, packageName, appName))
-                }, 100)
             }
         }
+        
+        scheduledExpiries[packageName] = checkRunnable
+        handler.postDelayed(checkRunnable, remainingMillis + 500) // 500ms buffer
+    }
+
+    private fun isExcludedPackage(packageName: String): Boolean {
+        return packageName == this.packageName || 
+               packageName == "com.android.systemui" ||
+               packageName == "com.google.android.apps.nexuslauncher" ||
+               packageName == "com.android.launcher3" ||
+               packageName == "com.google.android.inputmethod.latin"
     }
 
     override fun onInterrupt() {
         Log.d(TAG, "Service Interrupted")
+        handler.removeCallbacksAndMessages(null)
     }
     
     companion object {
