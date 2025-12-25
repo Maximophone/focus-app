@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 
 class FocusAccessibilityService : AccessibilityService() {
     
@@ -18,8 +19,7 @@ class FocusAccessibilityService : AccessibilityService() {
     private var currentForegroundPackage: String? = null
     private val handler = Handler(Looper.getMainLooper())
     
-    // To keep track of scheduled expiry checks
-    private val scheduledExpiries = mutableMapOf<String, Runnable>()
+    private val scheduledExpiries = mutableSetOf<String>()
     
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -29,117 +29,116 @@ class FocusAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        // Always check for PiP windows regardless of event type
-        checkAndBlockPip()
-
+        val eventPackage = event.packageName?.toString() ?: ""
+        
+        // Update current foreground package if it's a window change
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val packageName = event.packageName?.toString() ?: return
-            
-            // Log for debugging
-            Log.d(TAG, "Window state changed: $packageName")
-            currentForegroundPackage = packageName
-            
-            // Ignore our own app and system UI
-            if (isExcludedPackage(packageName)) {
-                return
+            if (!isExcludedPackage(eventPackage)) {
+                currentForegroundPackage = eventPackage
+                Log.d(TAG, "New foreground app: $currentForegroundPackage")
             }
-            
-            checkAndEnforceBlocking(packageName)
         }
+
+        // Always check if current app needs blocking (including PiP)
+        checkAndEnforceBlockingForPackage(eventPackage)
+        checkAndBlockPip()
     }
 
     private fun checkAndBlockPip() {
-        val windows = windows
+        val windows = windows ?: return
         for (window in windows) {
             if (window.isInPictureInPictureMode) {
-                // Try to get package name from the window root
                 val pkg = window.root?.packageName?.toString() ?: continue
-                
-                if (policyRepository.isAppCurrentlyBlocked(pkg) && !bypassManager.isAppBypassed(pkg)) {
-                    Log.d(TAG, "Detected blocked PiP window for $pkg. Clearing...")
-                    // Sending HOME again usually dismisses PiP if it's already on the home screen
-                    performGlobalAction(GLOBAL_ACTION_HOME)
-                    
-                    // Also trigger the activity prompt if not already showing
-                    val appName = try {
-                        packageManager.getApplicationLabel(
-                            packageManager.getApplicationInfo(pkg, 0)
-                        ).toString()
-                    } catch (e: Exception) { pkg }
-                    
-                    startActivity(BypassActivity.createIntent(this, pkg, appName))
+                if (shouldBlockApp(pkg)) {
+                    Log.d(TAG, "PiP detected for blocked app $pkg. Kicking home.")
+                    enforceBlock(pkg)
                     break
                 }
             }
         }
     }
 
-    private fun checkAndEnforceBlocking(packageName: String) {
+    private fun checkAndEnforceBlockingForPackage(packageName: String) {
+        if (packageName.isEmpty() || isExcludedPackage(packageName)) return
+
         if (policyRepository.isAppCurrentlyBlocked(packageName)) {
-            
             if (bypassManager.isAppBypassed(packageName)) {
-                Log.d(TAG, "App $packageName is currently bypassed")
                 scheduleExpiryCheck(packageName)
                 return
             }
-
+            
             val now = System.currentTimeMillis()
             if (packageName == lastBlockedPackage && now - lastBlockedTime < 2000) {
                 return
             }
             
-            Log.d(TAG, "Blocking app: $packageName")
-            lastBlockedPackage = packageName
-            lastBlockedTime = now
-            
-            val appName = try {
-                packageManager.getApplicationLabel(
-                    packageManager.getApplicationInfo(packageName, 0)
-                ).toString()
-            } catch (e: PackageManager.NameNotFoundException) {
-                packageName
-            }
-            
-            // Go home first, then launch prompt
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            handler.postDelayed({
-                startActivity(BypassActivity.createIntent(this, packageName, appName))
-            }, 100)
+            Log.d(TAG, "App $packageName is restricted and not bypassed. Enforcing.")
+            enforceBlock(packageName)
         }
     }
 
+    private fun shouldBlockApp(packageName: String): Boolean {
+        return policyRepository.isAppCurrentlyBlocked(packageName) && 
+               !bypassManager.isAppBypassed(packageName)
+    }
+
+    private fun enforceBlock(packageName: String) {
+        lastBlockedPackage = packageName
+        lastBlockedTime = System.currentTimeMillis()
+        
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        
+        val appName = try {
+            packageManager.getApplicationLabel(
+                packageManager.getApplicationInfo(packageName, 0)
+            ).toString()
+        } catch (e: Exception) { packageName }
+        
+        handler.postDelayed({
+            startActivity(BypassActivity.createIntent(this, packageName, appName))
+        }, 300) // Increased delay slightly for stability
+    }
+
     private fun scheduleExpiryCheck(packageName: String) {
-        // Only schedule if not already scheduled for this package
-        if (scheduledExpiries.containsKey(packageName)) return
+        if (scheduledExpiries.contains(packageName)) return
         
         val remainingMillis = bypassManager.getRemainingMillis(packageName)
         if (remainingMillis <= 0) return
 
-        Log.d(TAG, "Scheduling expiry check for $packageName in ${remainingMillis / 1000}s")
+        Log.d(TAG, "Bypass active for $packageName. Scheduling expiry in ${remainingMillis / 1000}s")
+        scheduledExpiries.add(packageName)
         
-        val checkRunnable = Runnable {
+        handler.postDelayed({
             scheduledExpiries.remove(packageName)
-            // Re-check block status
-            if (policyRepository.isAppCurrentlyBlocked(packageName) && !bypassManager.isAppBypassed(packageName)) {
-                if (currentForegroundPackage == packageName) {
-                    Log.d(TAG, "Bypass expired for $packageName while in foreground. kicking home.")
-                    performGlobalAction(GLOBAL_ACTION_HOME)
-                    
-                    val appName = try {
-                        packageManager.getApplicationLabel(
-                            packageManager.getApplicationInfo(packageName, 0)
-                        ).toString()
-                    } catch (e: Exception) { packageName }
-                    
-                    handler.postDelayed({
-                        startActivity(BypassActivity.createIntent(this, packageName, appName))
-                    }, 100)
-                }
+            checkExpiryNow(packageName)
+        }, remainingMillis + 500)
+    }
+
+    private fun checkExpiryNow(packageName: String) {
+        Log.d(TAG, "Timer expired for $packageName. Checking if enforcement is needed.")
+        
+        // Use a window-based check instead of just the variable for better accuracy
+        val isAppVisible = isAppInAnyWindow(packageName)
+        
+        if (isAppVisible && shouldBlockApp(packageName)) {
+            Log.d(TAG, "App $packageName is still active after expiry. Kicking home.")
+            enforceBlock(packageName)
+        } else {
+            Log.d(TAG, "App $packageName is no longer in foreground or still bypassed. Doing nothing.")
+        }
+    }
+
+    private fun isAppInAnyWindow(packageName: String): Boolean {
+        val windows = windows ?: return false
+        for (window in windows) {
+            // Check both full-screen and PiP windows
+            val root = window.root
+            if (root?.packageName?.toString() == packageName) {
+                return true
             }
         }
-        
-        scheduledExpiries[packageName] = checkRunnable
-        handler.postDelayed(checkRunnable, remainingMillis + 500) // 500ms buffer
+        // Fallback to our tracked variable
+        return currentForegroundPackage == packageName
     }
 
     private fun isExcludedPackage(packageName: String): Boolean {
@@ -147,12 +146,13 @@ class FocusAccessibilityService : AccessibilityService() {
                packageName == "com.android.systemui" ||
                packageName == "com.google.android.apps.nexuslauncher" ||
                packageName == "com.android.launcher3" ||
-               packageName == "com.google.android.inputmethod.latin"
+               packageName == "com.google.android.inputmethod.latin" ||
+               packageName.isEmpty()
     }
 
     override fun onInterrupt() {
-        Log.d(TAG, "Service Interrupted")
         handler.removeCallbacksAndMessages(null)
+        scheduledExpiries.clear()
     }
     
     companion object {
