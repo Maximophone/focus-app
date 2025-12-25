@@ -52,7 +52,10 @@ class FocusAccessibilityService : AccessibilityService() {
                 lastBlockedPackage = packageName
                 lastBlockedTime = now
                 
-                // 3. Get readable app name for the prompt
+                // 3. Go home FIRST to clear the blocked app
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                
+                // 4. Get readable app name for the prompt
                 val appName = try {
                     packageManager.getApplicationLabel(
                         packageManager.getApplicationInfo(packageName, 0)
@@ -61,11 +64,11 @@ class FocusAccessibilityService : AccessibilityService() {
                     packageName
                 }
                 
-                // 4. Launch Bypass Activity
-                startActivity(BypassActivity.createIntent(this, packageName, appName))
-                
-                // 5. Also go home just in case to push the app to background
-                performGlobalAction(GLOBAL_ACTION_HOME)
+                // 5. Launch Bypass Activity AFTER a tiny delay to ensure Home has settled
+                // Using a handler or a simple thread to ensure the activity lands on top of Home
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    startActivity(BypassActivity.createIntent(this, packageName, appName))
+                }, 100)
             }
         }
     }

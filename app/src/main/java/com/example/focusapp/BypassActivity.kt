@@ -54,7 +54,8 @@ class BypassActivity : ComponentActivity() {
                 putExtra(EXTRA_PACKAGE_NAME, packageName)
                 putExtra(EXTRA_APP_NAME, appName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
         }
     }
